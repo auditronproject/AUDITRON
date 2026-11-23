@@ -1,21 +1,189 @@
 
+import argparse
 import json
+import sys
 from pathlib import Path
 from datetime import datetime
 
-import streamlit as st
-import pandas as pd
-
 from modules.cis_checker import run_cis_audit
-from modules.system_collector import collect_system_info
+from modules.system_collector import (
+    collect_system_info,
+    abort_active_collection,
+    reset_abort_state
+)
 from modules.drift_detector import create_baseline, detect_configuration_drift
-from modules.risk_analyzer import analyze_risks, get_risk_summary
+from modules.risk_analyzer import (
+    analyze_risks,
+    get_risk_summary,
+    get_risk_methodology
+)
 from modules.report_generator import generate_csv_report
 from modules.safety_manager import (
+    DEFAULT_TARGET_SCOPE,
     check_authorization,
     validate_operation,
-    get_safety_notice
+    validate_target_scope,
+    get_safety_notice,
+    get_legal_disclaimer
 )
+
+
+# =========================================================
+# CLI INTERFACE (ARGPARSE SUPPORT FOR TERMINAL EXECUTION)
+# =========================================================
+
+def build_cli_parser():
+    parser = argparse.ArgumentParser(
+        prog="python main.py",
+        description=(
+            "AUDITRON v1.0.0 | Windows Security Audit & Configuration Drift "
+            "Detection Platform (Read-Only)."
+        ),
+        epilog=(
+            "Usage Examples:\n"
+            "  Launch Streamlit Web Dashboard:\n"
+            "    python -m streamlit run main.py\n\n"
+            "  Run CIS Benchmark Audit & Risk Analysis in CLI:\n"
+            "    python main.py --cli --authorize --target 127.0.0.1 --audit\n\n"
+            "  Create a Configuration Baseline in CLI:\n"
+            "    python main.py --cli --authorize --baseline\n\n"
+            "  Detect Configuration Drift against Saved Baseline:\n"
+            "    python main.py --cli --authorize --drift\n\n"
+            "  Export CSV Audit Report from CLI:\n"
+            "    python main.py --cli --authorize --audit --report output/audit_report.csv\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="Run AUDITRON in command-line interface (CLI) mode instead of Streamlit."
+    )
+    parser.add_argument(
+        "--authorize",
+        action="store_true",
+        help="Confirm explicit authorization to audit the target computer (Required)."
+    )
+    parser.add_argument(
+        "--target",
+        default=DEFAULT_TARGET_SCOPE,
+        help=f"Target scope to audit (Safe default: {DEFAULT_TARGET_SCOPE})."
+    )
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="Run the CIS Benchmark security audit and rule-based risk analysis."
+    )
+    parser.add_argument(
+        "--baseline",
+        action="store_true",
+        help="Create and save a reference security configuration baseline."
+    )
+    parser.add_argument(
+        "--drift",
+        action="store_true",
+        help="Compare current configuration against the saved security baseline."
+    )
+    parser.add_argument(
+        "--report",
+        metavar="FILE",
+        help="Save the CSV security audit report to the specified file path."
+    )
+
+    return parser
+
+
+def run_cli_mode(argv):
+    parser = build_cli_parser()
+    args = parser.parse_args(argv)
+
+    print("=" * 72)
+    print("AUDITRON v1.0.0 | SECURITY AUDIT & COMPLIANCE PLATFORM (READ-ONLY)")
+    print("=" * 72)
+    print(get_legal_disclaimer())
+    print("-" * 72)
+
+    auth_check = check_authorization(args.authorize)
+    if not auth_check["allowed"]:
+        print(f"[BLOCKED] {auth_check['message']}")
+        print("Tip: Pass --authorize to confirm you have permission to audit this host.")
+        return 1
+
+    scope_check = validate_target_scope(args.target)
+    if not scope_check["allowed"]:
+        print(f"[BLOCKED] {scope_check['message']}")
+        return 1
+
+    print(f"[OK] {auth_check['message']}")
+    print(f"[OK] {scope_check['message']}")
+    print("-" * 72)
+
+    if not (args.audit or args.baseline or args.drift or args.report):
+        print("No operation specified. Use --audit, --baseline, --drift, or --report.")
+        print("Run 'python main.py --help' for usage examples.")
+        return 0
+
+    try:
+        if args.baseline:
+            result = create_baseline()
+            status_tag = "OK" if result.get("success") else "ERROR"
+            print(f"[{status_tag}] {result.get('message')}")
+
+        if args.drift:
+            drift = detect_configuration_drift()
+            if drift.get("success"):
+                print(
+                    f"[DRIFT] Baseline: {drift.get('baseline_created_at')} | "
+                    f"Changes Detected: {drift.get('drift_count', 0)}"
+                )
+                for item in drift.get("results", []):
+                    print(f"  - {item['control']}: {item['status']}")
+            else:
+                print(f"[ERROR] {drift.get('message')}")
+
+        if args.audit or args.report:
+            audit_results = run_cis_audit()
+            risk_results = analyze_risks(audit_results)
+
+            print("CIS BENCHMARK AUDIT & RISK FINDINGS:")
+            for item in risk_results:
+                score = (
+                    f"{item['risk_score']}/10"
+                    if item["risk_score"] is not None
+                    else "N/A"
+                )
+                print(
+                    f"  [{item['finding_id']}] {item['control']} | "
+                    f"Status: {item['status']} | Risk: {item['risk_level']} ({score})"
+                )
+                print(f"      Details: {item['details']}")
+                print(f"      Recommendation: {item['recommendation']}")
+
+            if args.report:
+                report_path = Path(args.report)
+                report_path.parent.mkdir(parents=True, exist_ok=True)
+                csv_content = generate_csv_report(audit_results, risk_results)
+                report_path.write_text(csv_content, encoding="utf-8")
+                print(f"\n[OK] CSV report saved to: {report_path}")
+
+    except KeyboardInterrupt:
+        print("\n[KILL SWITCH] Execution aborted cleanly by user (Ctrl+C).")
+        return 130
+
+    return 0
+
+
+CLI_TRIGGER_FLAGS = {
+    "-h", "--help", "--cli", "--authorize",
+    "--target", "--audit", "--baseline", "--drift", "--report"
+}
+
+if any(arg in CLI_TRIGGER_FLAGS for arg in sys.argv[1:]):
+    raise SystemExit(run_cli_mode(sys.argv[1:]))
+
+import streamlit as st
+import pandas as pd
 
 
 # =========================================================
@@ -323,6 +491,8 @@ hr {
 
 DEFAULTS = {
     "authorized": False,
+    "kill_switch_active": False,
+    "target_scope": DEFAULT_TARGET_SCOPE,
     "audit_results": [],
     "audit_timestamp": None,
     "drift_result": {},
@@ -433,6 +603,14 @@ def operation_allowed(operation):
         st.error(authorization["message"])
         return False
 
+    scope_check = validate_target_scope(
+        st.session_state.get("target_scope", DEFAULT_TARGET_SCOPE)
+    )
+
+    if not scope_check["allowed"]:
+        st.error(scope_check["message"])
+        return False
+
     validation = validate_operation(operation)
 
     if not validation["allowed"]:
@@ -448,6 +626,26 @@ def clear_current_results():
     st.session_state["drift_result"] = {}
     st.session_state["drift_security_results"] = []
     st.session_state["baseline_result"] = {}
+
+
+def trigger_kill_switch():
+    """
+    Emergency Stop (Kill Switch): aborts any running PowerShell collection
+    subprocesses and freezes/halts dashboard execution while preserving
+    existing in-memory session results.
+    """
+    abort_active_collection()
+    st.session_state["kill_switch_active"] = True
+    st.session_state["authorized"] = False
+
+
+def release_kill_switch():
+    """
+    Release the Emergency Kill Switch so the user can re-authorize
+    and resume normal operation with preserved session results.
+    """
+    reset_abort_state()
+    st.session_state["kill_switch_active"] = False
 
 
 def display_page_header(title, description=None):
@@ -756,8 +954,8 @@ with st.sidebar:
         "Navigation",
         [
             "Overview",
-            "CIS Benchmark Audit",
             "Configuration Drift",
+            "CIS Benchmark Audit",
             "Risk Analysis",
             "Report Center",
             "Safety & System"
@@ -769,13 +967,33 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("##### AUTHORIZED SECURITY AUDIT")
 
+    st.caption(
+        "**Computer Crimes Act 1997 (Act 563):** "
+        "Audit only systems with explicit authorization."
+    )
+
+    st.text_input(
+        "Target Scope (Safe Default: 127.0.0.1)",
+        key="target_scope",
+        help="Permitted scope: 127.0.0.1, localhost, ::1, or the local hostname."
+    )
+
+    scope_validation = validate_target_scope(
+        st.session_state.get("target_scope", DEFAULT_TARGET_SCOPE)
+    )
+
+    if not scope_validation["allowed"]:
+        st.error(scope_validation["message"])
+
     st.checkbox(
         "I am authorized to audit this computer.",
         key="authorized"
     )
 
-    if st.session_state["authorized"]:
+    if st.session_state["authorized"] and scope_validation["allowed"]:
         st.success("Authorization confirmed.")
+    elif st.session_state["authorized"] and not scope_validation["allowed"]:
+        st.warning("Valid local target scope required.")
     else:
         st.warning("Authorization required.")
 
@@ -794,7 +1012,24 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown("##### SESSION MANAGEMENT")
+    st.markdown("##### SESSION & KILL SWITCH")
+
+    if st.session_state.get("kill_switch_active", False):
+        if st.button(
+            "Release Kill Switch (Resume)",
+            width="stretch",
+            on_click=release_kill_switch,
+            help="Release the emergency halt so you can re-authorize and continue."
+        ):
+            st.rerun()
+    else:
+        if st.button(
+            "🛑 Emergency Stop (Kill Switch)",
+            width="stretch",
+            on_click=trigger_kill_switch,
+            help="Immediately abort active PowerShell queries and freeze/halt execution (preserves collected results)."
+        ):
+            st.rerun()
 
     if st.button(
         "🧹 Clear Current Results",
@@ -805,7 +1040,7 @@ with st.sidebar:
         st.session_state["clear_notice"] = True
         st.rerun()
 
-    st.caption("AUDITRON | Version 2.2")
+    st.caption("AUDITRON | Version 1.0.0")
 
 
 # =========================================================
@@ -820,9 +1055,67 @@ if st.session_state["system_info"] is None:
 
 system = st.session_state["system_info"] or {}
 
+if st.session_state.get("kill_switch_active", False):
+    st.error(
+        "### 🛑 EMERGENCY KILL SWITCH ENGAGED — EXECUTION HALTED\n\n"
+        "- All active PowerShell inspection queries have been aborted.\n"
+        "- Audit execution is currently **frozen** and authorization has been suspended.\n"
+        "- **In-memory session results, audit history, and saved baselines have been preserved.**\n\n"
+        "To resume using AUDITRON, click **Release Kill Switch (Resume)** in the left sidebar "
+        "(or below) and re-confirm your authorization."
+    )
+    if st.button(
+        "Release Kill Switch & Return to Dashboard",
+        type="primary",
+        on_click=release_kill_switch
+    ):
+        st.rerun()
+    st.stop()
+
 if st.session_state.pop("clear_notice", False):
     st.success(
         "Current results cleared. Audit history and saved baseline were preserved."
+    )
+
+# =========================================================
+# STARTUP LEGAL DISCLAIMER BANNER
+# =========================================================
+
+current_scope_check = validate_target_scope(
+    st.session_state.get("target_scope", DEFAULT_TARGET_SCOPE)
+)
+
+if not st.session_state["authorized"] or not current_scope_check["allowed"]:
+    st.warning(
+        f"**{get_legal_disclaimer()}**\n\n"
+        "Please verify the **Target Scope** (default `127.0.0.1`) and confirm your "
+        "authorization in the **Authorized Security Audit** section in the left sidebar "
+        "before running any security audit operations."
+    )
+    st.markdown(
+        """
+        <div id="unauthorized-anchor"></div>
+        <style>
+        /* Dim, grayscale, and slightly blur ALL blocks (including columns/cards/buttons) after the legal disclaimer */
+        div:has(> #unauthorized-anchor) ~ *,
+        div[data-testid="stElementContainer"]:has(#unauthorized-anchor) ~ * {
+            opacity: 0.25 !important;
+            filter: grayscale(100%) blur(1px) !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            transition: opacity 0.25s ease, filter 0.25s ease;
+        }
+        /* Highlight the sidebar authorization checkbox area */
+        [data-testid="stSidebar"] [data-testid="stCheckbox"] {
+            background: rgba(56, 189, 248, 0.14);
+            border: 1px solid #38BDF8;
+            border-radius: 8px;
+            padding: 8px 10px;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
     )
 
 
@@ -1087,6 +1380,15 @@ elif page == "CIS Benchmark Audit":
         st.caption(
             "Latest audit: "
             + str(st.session_state.get("audit_timestamp", "Unavailable"))
+        )
+
+        st.markdown("---")
+        st.button(
+            "View Detailed Risk Analysis & Recommendations →",
+            key="cis_to_risk",
+            width="stretch",
+            on_click=navigate_to,
+            args=("Risk Analysis",)
         )
     else:
         st.info("No audit results yet. Run the security audit to begin.")
@@ -1354,9 +1656,55 @@ elif page == "Risk Analysis":
 
             risk_results = analyze_risks(results)
             risk_summary = get_risk_summary(risk_results)
+            methodology = get_risk_methodology()
 
             st.markdown("### Risk Distribution")
             display_risk_metrics(risk_summary)
+
+            st.markdown("---")
+            st.markdown("### Risk Findings")
+
+            with st.expander("Risk Scoring Methodology", expanded=True):
+                st.write("**Method:**", methodology["method"])
+                st.write("**Score Range:**", methodology["score_range"])
+                st.markdown("**Classification Rules:**")
+                for level, desc in methodology["classification"].items():
+                    st.write(f"- **{level}:** {desc}")
+                st.caption(methodology["limitation"])
+
+            for item in risk_results:
+                finding_id = item.get("finding_id", "N/A")
+                score = item.get("risk_score")
+                score_display = f"{score} / 10" if score is not None else "Not Scored"
+
+                with st.expander(
+                    f'{finding_id} | {item["control"]} — {item["risk_level"]}'
+                ):
+                    meta_col1, meta_col2, meta_col3, meta_col4 = st.columns(4)
+
+                    with meta_col1:
+                        st.write("**Finding ID:**", finding_id)
+                    with meta_col2:
+                        st.write("**Audit Status:**", item["status"])
+                    with meta_col3:
+                        st.write("**Risk Level:**", item["risk_level"])
+                    with meta_col4:
+                        st.write("**Risk Score:**", score_display)
+
+                    st.write("**Priority:**", item.get("priority", "N/A"))
+                    st.write("**Details:**", item["details"])
+                    st.write(
+                        "**Risk Explanation:**",
+                        item.get("risk_explanation", "No explanation available.")
+                    )
+                    st.info(
+                        f'**Recommendation:** {item.get("recommendation", "No recommendation available.")}'
+                    )
+
+            st.caption(
+                "Risk levels use the project's rule-based classification. "
+                "They are not CVSS scores or formal business-impact ratings."
+            )
 
             st.markdown("---")
             st.markdown("### Risk Distribution Chart")
@@ -1372,21 +1720,12 @@ elif page == "Risk Analysis":
             )
 
             st.markdown("---")
-            st.markdown("### Risk Findings")
-
-            for item in risk_results:
-
-                with st.expander(
-                    f'{item["control"]} — {item["risk_level"]}'
-                ):
-
-                    st.write("**Audit Status:**", item["status"])
-                    st.write("**Risk Level:**", item["risk_level"])
-                    st.write("**Details:**", item["details"])
-
-            st.caption(
-                "Risk levels use the project's rule-based classification. "
-                "They are not CVSS scores or formal business-impact ratings."
+            st.button(
+                "Proceed to Report Center (Download CSV Report) →",
+                key="risk_to_report",
+                width="stretch",
+                on_click=navigate_to,
+                args=("Report Center",)
             )
 
     else:
@@ -1484,10 +1823,22 @@ elif page == "Safety & System":
     st.info(safety_notice["notice"])
 
     st.markdown("**Automatic Remediation:** Disabled")
+    st.markdown(
+        f"**Default Safe Target Scope:** `{safety_notice.get('default_target_scope', DEFAULT_TARGET_SCOPE)}`"
+    )
+    st.markdown(
+        f"**Active Target Scope:** `{st.session_state.get('target_scope', DEFAULT_TARGET_SCOPE)}`"
+    )
+    st.markdown("**Emergency Kill Switch:** Enabled (Sidebar Session & Kill Switch)")
 
     st.warning(
         "AUTHORIZED USE ONLY: Audit only systems you own "
         "or have explicit permission to inspect."
+    )
+
+    st.info(
+        f"**Legal Reference ({safety_notice.get('legal_reference', 'Computer Crimes Act 1997')}):** "
+        f"{safety_notice.get('legal_disclaimer', get_legal_disclaimer())}"
     )
 
     if st.session_state["authorized"]:
@@ -1540,7 +1891,7 @@ elif page == "Safety & System":
     )
 
     st.caption(
-        "AUDITRON | Security Audit & Compliance Platform | Version 2.2"
+        "AUDITRON | Security Audit & Compliance Platform | Version 1.0.0"
     )
 
 
@@ -1579,7 +1930,7 @@ st.html("""
         line-height: 1.8;
     ">
         Educational Cybersecurity Project<br>
-        Read-Only Operations | Version 2.2
+        Read-Only Operations | Version 1.0.0
     </div>
 </div>
 """)
