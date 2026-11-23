@@ -2,6 +2,43 @@
 import json
 import subprocess
 import platform
+import threading
+
+_PROCESS_LOCK = threading.Lock()
+_ACTIVE_PROCESSES = set()
+_ABORT_REQUESTED = threading.Event()
+
+
+def abort_active_collection():
+    """
+    Emergency Kill Switch hook: set abort flag and terminate
+    any running read-only PowerShell collection subprocesses.
+    """
+
+    _ABORT_REQUESTED.set()
+
+    with _PROCESS_LOCK:
+        active = list(_ACTIVE_PROCESSES)
+
+    terminated_count = 0
+
+    for proc in active:
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                terminated_count += 1
+        except OSError:
+            pass
+
+    return terminated_count
+
+
+def reset_abort_state():
+    """
+    Clear the abort flag when the user releases the kill switch.
+    """
+
+    _ABORT_REQUESTED.clear()
 
 
 def run_powershell(command):
@@ -10,8 +47,15 @@ def run_powershell(command):
     and return the result as Python data.
     """
 
+    if _ABORT_REQUESTED.is_set():
+        raise RuntimeError(
+            "Operation aborted by Emergency Kill Switch."
+        )
+
+    proc = None
+
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             [
                 "powershell.exe",
                 "-NoProfile",
@@ -19,17 +63,27 @@ def run_powershell(command):
                 "-Command",
                 command
             ],
-            capture_output=True,
-            text=True,
-            timeout=20
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
         )
 
-        if result.returncode != 0:
+        with _PROCESS_LOCK:
+            _ACTIVE_PROCESSES.add(proc)
+
+        stdout, stderr = proc.communicate(timeout=20)
+
+        if _ABORT_REQUESTED.is_set():
             raise RuntimeError(
-                result.stderr.strip() or "PowerShell command failed"
+                "Operation aborted by Emergency Kill Switch."
             )
 
-        output = result.stdout.strip()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                stderr.strip() or "PowerShell command failed"
+            )
+
+        output = stdout.strip()
 
         if not output:
             return None
@@ -37,12 +91,19 @@ def run_powershell(command):
         return json.loads(output)
 
     except subprocess.TimeoutExpired:
+        if proc is not None:
+            proc.kill()
         raise RuntimeError("PowerShell command timed out")
 
     except json.JSONDecodeError as error:
         raise RuntimeError(
             f"Unable to read PowerShell JSON output: {error}"
         )
+
+    finally:
+        if proc is not None:
+            with _PROCESS_LOCK:
+                _ACTIVE_PROCESSES.discard(proc)
 
 
 def collect_firewall_status():
