@@ -263,7 +263,7 @@ Some security information depends on the Windows PowerShell security modules and
 ### 7.2 Clone the Repository
 
 ```bash
-git clone https://github.com/auditronproject/AUDITRON.git
+git clone https://github.com/daniaalisya/AUDITRON.git
 ```
 
 Navigate to the project directory:
