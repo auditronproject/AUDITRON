@@ -1030,7 +1030,7 @@ with st.sidebar:
             st.rerun()
     else:
         if st.button(
-            "🛑 Emergency Stop (Kill Switch)",
+            "Emergency Stop (Kill Switch)",
             width="stretch",
             on_click=trigger_kill_switch,
             help="Immediately abort active PowerShell queries and freeze/halt execution (preserves collected results)."
@@ -1038,7 +1038,7 @@ with st.sidebar:
             st.rerun()
 
     if st.button(
-        "🧹 Clear Current Results",
+        "Clear Current Results",
         width="stretch",
         help="Clears current results but preserves history and saved baseline."
     ):
@@ -1063,7 +1063,7 @@ system = st.session_state["system_info"] or {}
 
 if st.session_state.get("kill_switch_active", False):
     st.error(
-        "### 🛑 EMERGENCY KILL SWITCH ENGAGED — EXECUTION HALTED\n\n"
+        "### EMERGENCY KILL SWITCH ENGAGED: EXECUTION HALTED\n\n"
         "- All active PowerShell inspection queries have been aborted.\n"
         "- Audit execution is currently **frozen** and authorization has been suspended.\n"
         "- **In-memory session results, audit history, and saved baselines have been preserved.**\n\n"
