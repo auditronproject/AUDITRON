@@ -3,7 +3,9 @@ from modules.system_collector import (
     collect_firewall_status,
     collect_defender_status,
     collect_smb1_status,
-    collect_antivirus_providers
+    collect_antivirus_providers,
+    collect_guest_account_status,
+    collect_uac_status
 )
 
 
@@ -432,6 +434,99 @@ def check_smb1():
 
 
 # ==========================================
+# GUEST ACCOUNT CHECK
+# ==========================================
+
+def check_guest_account():
+
+    try:
+        guest = collect_guest_account_status()
+
+        if not isinstance(guest, dict):
+            return {
+                "control": "Guest Account",
+                "status": "ERROR",
+                "details": "Unexpected Guest account data format."
+            }
+
+        enabled = guest.get("Enabled")
+
+        if type(enabled) is not bool:
+            return {
+                "control": "Guest Account",
+                "status": "WARNING",
+                "details": "Guest account status could not be determined."
+            }
+
+        if enabled is True:
+            return {
+                "control": "Guest Account",
+                "status": "FAIL",
+                "details": "The built-in Guest account is enabled."
+            }
+
+        return {
+            "control": "Guest Account",
+            "status": "PASS",
+            "details": "The built-in Guest account is disabled."
+        }
+
+    except Exception as error:
+        return {
+            "control": "Guest Account",
+            "status": "ERROR",
+            "details": str(error)
+        }
+
+
+# ==========================================
+# USER ACCOUNT CONTROL (UAC) CHECK
+# ==========================================
+
+def check_uac():
+
+    try:
+        uac = collect_uac_status()
+
+        if not isinstance(uac, dict):
+            return {
+                "control": "User Account Control",
+                "status": "ERROR",
+                "details": "Unexpected UAC data format."
+            }
+
+        value = uac.get("EnableLUA")
+
+        # The registry value is a number: 1 = on, 0 = off.
+        if type(value) is not int or value not in (0, 1):
+            return {
+                "control": "User Account Control",
+                "status": "WARNING",
+                "details": "UAC status could not be determined."
+            }
+
+        if value == 0:
+            return {
+                "control": "User Account Control",
+                "status": "FAIL",
+                "details": "UAC is disabled (EnableLUA = 0)."
+            }
+
+        return {
+            "control": "User Account Control",
+            "status": "PASS",
+            "details": "UAC is enabled (EnableLUA = 1)."
+        }
+
+    except Exception as error:
+        return {
+            "control": "User Account Control",
+            "status": "ERROR",
+            "details": str(error)
+        }
+
+
+# ==========================================
 # RUN COMPLETE CIS AUDIT
 # ==========================================
 
@@ -465,7 +560,9 @@ def run_cis_audit():
             providers,
             provider_error=provider_error
         ),
-        check_smb1()
+        check_smb1(),
+        check_guest_account(),
+        check_uac()
     ]
 
     return results

@@ -7,7 +7,9 @@ from modules.system_collector import (
     collect_firewall_status,
     collect_defender_status,
     collect_smb1_status,
-    collect_antivirus_providers
+    collect_antivirus_providers,
+    collect_guest_account_status,
+    collect_uac_status
 )
 
 
@@ -25,7 +27,9 @@ def collect_security_configuration():
         "firewall": collect_firewall_status(),
         "defender": collect_defender_status(),
         "smb1": collect_smb1_status(),
-        "antivirus_providers": collect_antivirus_providers()
+        "antivirus_providers": collect_antivirus_providers(),
+        "guest_account": collect_guest_account_status(),
+        "uac": collect_uac_status()
     }
 
     return configuration

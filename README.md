@@ -63,6 +63,8 @@ Inspects selected Windows security controls:
 - Microsoft Defender
 - Third-Party Antivirus Provider Detection
 - SMBv1 Protocol
+- Built-in Guest Account Status
+- User Account Control (UAC)
 
 The checker displays five possible audit statuses:
 
@@ -170,7 +172,7 @@ Although AUDITRON is a defensive/compliance auditing tool (Category 5: **Auditin
 |---|---|---|---|
 | **1. Pre-Engagement & Scoping** | Target Selection | `modules/safety_manager.py` (`validate_target_scope`, `check_authorization`, `get_legal_disclaimer`) | Enforce legal compliance (Act 563), explicit user consent, and safe local target scope (`127.0.0.1` / `localhost`). |
 | **2. Reconnaissance & Host Discovery** | System Fingerprinting | `modules/system_collector.py` (`collect_system_info`) | Identify target OS platform, build version, and hostname to contextualize the security audit. |
-| **3. Enumeration & Configuration Collection** | Service & Defense Enumeration | `modules/system_collector.py` (`run_powershell`, `Get-NetFirewallProfile`, `Get-MpComputerStatus`, `Get-SmbServerConfiguration`, `SecurityCenter2`) | Non-intrusively enumerate active firewall profiles, endpoint protection status, registered AV providers, and legacy protocols. |
+| **3. Enumeration & Configuration Collection** | Service & Defense Enumeration | `modules/system_collector.py` (`run_powershell`, `Get-NetFirewallProfile`, `Get-MpComputerStatus`, `Get-SmbServerConfiguration`, `SecurityCenter2`, `Get-LocalUser`, UAC `EnableLUA` registry value) | Non-intrusively enumerate active firewall profiles, endpoint protection status, registered AV providers, legacy protocols, the Guest account, and UAC. |
 | **4. Vulnerability & Compliance Analysis** | Weakness & Drift Exploitation | `modules/cis_checker.py` (`run_cis_audit`) & `modules/drift_detector.py` (`detect_configuration_drift`) | Evaluate controls against CIS-aligned rules and compare live states against `output/security_baseline.json` to detect unauthorized configuration drift (e.g., disabled firewall or enabled SMBv1). |
 | **5. Risk Prioritization & Impact Analysis** | Post-Enumeration Triage | `modules/risk_analyzer.py` (`analyze_risks`, `get_risk_summary`) | Assign Finding IDs (`AUD-001`...), rule-based severity levels (`HIGH`, `MEDIUM`, `LOW`, `INFORMATIONAL`, `UNDETERMINED`), scores (`0–10`), and actionable remediation guidance. |
 | **6. Reporting & Remediation Guidance** | Engagement Debrief & Hardening | `modules/report_generator.py` (`generate_csv_report`) & `main.py` (`Report Center`) | Produce structured CSV audit reports and historical tracking (`output/audit_history.json`) to support system hardening and responsible disclosure. |
@@ -184,7 +186,7 @@ flowchart TD
     Gate -- "Authorized & Scope Verified" --> UI["AUDITRON Streamlit Dashboard (main.py)"]
 
     UI --> Collector["System Collector (modules/system_collector.py)<br/>Read-Only PowerShell & Platform Queries"]
-    Collector --> WinAPI[("Windows 11 Host<br/>Firewall | Defender | SecurityCenter2 | SMBv1")]
+    Collector --> WinAPI[("Windows 11 Host<br/>Firewall | Defender | SecurityCenter2 | SMBv1 | Guest | UAC")]
 
     Collector --> CIS["CIS Benchmark Checker<br/>(modules/cis_checker.py)"]
     Collector --> Drift["Configuration Drift Detector<br/>(modules/drift_detector.py)"]
@@ -332,6 +334,7 @@ Follow these steps to perform a security audit:
 ### Important Usage Notes
 
 - Create a baseline before performing configuration comparisons.
+- A baseline saved before the Guest Account and UAC checks were added reports them as **NEW CONTROL**. Create a new baseline to include them.
 - A saved baseline is retained when current dashboard results are cleared.
 - Risk analysis and report generation use the latest CIS audit results.
 - Confirm authorization and valid local target scope before performing security operations.

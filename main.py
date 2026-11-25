@@ -852,6 +852,12 @@ def normalize_control_name(control):
     if "antivirus" in name or "provider" in name:
         return "antivirus_providers"
 
+    if "guest" in name:
+        return "guest_account"
+
+    if "uac" in name or "user_account_control" in name:
+        return "uac"
+
     return name
 
 

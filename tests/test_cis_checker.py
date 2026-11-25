@@ -15,7 +15,9 @@ class TestCISChecker(unittest.TestCase):
         antivirus_data=None,
         firewall_data=None,
         defender_data=None,
-        smb1_data=None
+        smb1_data=None,
+        guest_data=None,
+        uac_data=None
     ):
 
         if firewall_data is None:
@@ -37,6 +39,12 @@ class TestCISChecker(unittest.TestCase):
                 "EnableSMB1Protocol": smb1_enabled
             }
 
+        if guest_data is None:
+            guest_data = {"Enabled": False}
+
+        if uac_data is None:
+            uac_data = {"EnableLUA": 1}
+
         if antivirus_data is None:
             antivirus_data = [
                 {
@@ -57,6 +65,12 @@ class TestCISChecker(unittest.TestCase):
         ), patch(
             "modules.cis_checker.collect_antivirus_providers",
             return_value=antivirus_data
+        ), patch(
+            "modules.cis_checker.collect_guest_account_status",
+            return_value=guest_data
+        ), patch(
+            "modules.cis_checker.collect_uac_status",
+            return_value=uac_data
         ):
 
             return run_cis_audit()
@@ -228,6 +242,12 @@ class TestCISChecker(unittest.TestCase):
         ), patch(
             "modules.cis_checker.collect_antivirus_providers",
             side_effect=RuntimeError("Provider collection failed")
+        ), patch(
+            "modules.cis_checker.collect_guest_account_status",
+            return_value={"Enabled": False}
+        ), patch(
+            "modules.cis_checker.collect_uac_status",
+            return_value={"EnableLUA": 1}
         ):
 
             results = run_cis_audit()
@@ -288,6 +308,49 @@ class TestCISChecker(unittest.TestCase):
         status = self.get_status(results)
 
         self.assertEqual(status["SMBv1"], "WARNING")
+
+    # ======================================
+    # GUEST ACCOUNT TESTS
+    # ======================================
+
+    def test_guest_account_statuses(self):
+
+        cases = [
+            ({"Enabled": False}, "PASS"),
+            ({"Enabled": True}, "FAIL"),
+            ({"Enabled": None}, "WARNING"),
+            ("invalid", "ERROR")
+        ]
+
+        for data, expected in cases:
+            with self.subTest(data=data):
+                status = self.get_status(
+                    self.run_mock_audit(guest_data=data)
+                )
+                self.assertEqual(status["Guest Account"], expected)
+
+    # ======================================
+    # UAC TESTS
+    # ======================================
+
+    def test_uac_statuses(self):
+
+        cases = [
+            ({"EnableLUA": 1}, "PASS"),
+            ({"EnableLUA": 0}, "FAIL"),
+            ({"EnableLUA": None}, "WARNING"),
+            ({"EnableLUA": True}, "WARNING"),
+            ("invalid", "ERROR")
+        ]
+
+        for data, expected in cases:
+            with self.subTest(data=data):
+                status = self.get_status(
+                    self.run_mock_audit(uac_data=data)
+                )
+                self.assertEqual(
+                    status["User Account Control"], expected
+                )
 
 
 if __name__ == "__main__":

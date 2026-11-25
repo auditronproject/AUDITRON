@@ -130,6 +130,31 @@ CONTROL_RECOMMENDATIONS = {
             "Keep SMBv1 disabled unless a documented business "
             "requirement justifies its use."
         )
+    },
+    "guest account": {
+        "FAIL": (
+            "Disable the built-in Guest account to prevent access "
+            "without individual user credentials."
+        ),
+        "WARNING": (
+            "Verify the Guest account status in Local Users and Groups."
+        ),
+        "PASS": (
+            "Keep the built-in Guest account disabled."
+        )
+    },
+    "user account control": {
+        "FAIL": (
+            "Enable User Account Control. Check application "
+            "compatibility and plan a restart for the change."
+        ),
+        "WARNING": (
+            "Verify the UAC EnableLUA setting and investigate why "
+            "its status could not be determined."
+        ),
+        "PASS": (
+            "Keep User Account Control enabled."
+        )
     }
 }
 

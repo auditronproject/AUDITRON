@@ -173,6 +173,39 @@ def collect_smb1_status():
     return run_powershell(command)
 
 
+def collect_guest_account_status():
+    # The built-in Guest account always has a SID ending in -501,
+    # so it is still found if someone renames it.
+    command = """
+    $ErrorActionPreference = 'Stop'
+
+    Get-LocalUser |
+        Where-Object { $_.SID.Value -like 'S-1-5-21-*-501' } |
+        Select-Object @{
+            Name = 'Enabled'
+            Expression = { [bool]$_.Enabled }
+        } |
+        ConvertTo-Json -Compress
+    """
+
+    return run_powershell(command)
+
+
+def collect_uac_status():
+    # EnableLUA is not cast, so a missing value stays null
+    # instead of being reported as disabled.
+    command = """
+    $ErrorActionPreference = 'Stop'
+
+    Get-ItemProperty `
+        -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' |
+        Select-Object EnableLUA |
+        ConvertTo-Json -Compress
+    """
+
+    return run_powershell(command)
+
+
 def collect_system_info():
     return {
         "operating_system": platform.system(),
@@ -194,3 +227,8 @@ if __name__ == "__main__":
     print("\nANTIVIRUS PROVIDERS:")
     print(collect_antivirus_providers())
 
+    print("\nGUEST ACCOUNT DATA:")
+    print(collect_guest_account_status())
+
+    print("\nUAC DATA:")
+    print(collect_uac_status())
