@@ -36,7 +36,7 @@ def build_cli_parser():
     parser = argparse.ArgumentParser(
         prog="python main.py",
         description=(
-            "AUDITRON v1.0.0 | Windows Security Audit & Configuration Drift "
+            "AUDITRON v1.1.0 | Windows Security Audit & Configuration Drift "
             "Detection Platform (Read-Only)."
         ),
         epilog=(
@@ -99,7 +99,7 @@ def run_cli_mode(argv):
     args = parser.parse_args(argv)
 
     print("=" * 72)
-    print("AUDITRON v1.0.0 | SECURITY AUDIT & COMPLIANCE PLATFORM (READ-ONLY)")
+    print("AUDITRON v1.1.0 | SECURITY AUDIT & COMPLIANCE PLATFORM (READ-ONLY)")
     print("=" * 72)
     print(get_legal_disclaimer())
     print("-" * 72)
@@ -1046,7 +1046,7 @@ with st.sidebar:
         st.session_state["clear_notice"] = True
         st.rerun()
 
-    st.caption("AUDITRON | Version 1.0.0")
+    st.caption("AUDITRON | Version 1.1.0")
 
 
 # =========================================================
@@ -1897,7 +1897,7 @@ elif page == "Safety & System":
     )
 
     st.caption(
-        "AUDITRON | Security Audit & Compliance Platform | Version 1.0.0"
+        "AUDITRON | Security Audit & Compliance Platform | Version 1.1.0"
     )
 
 
@@ -1936,7 +1936,7 @@ st.html("""
         line-height: 1.8;
     ">
         Educational Cybersecurity Project<br>
-        Read-Only Operations | Version 1.0.0
+        Read-Only Operations | Version 1.1.0
     </div>
 </div>
 """)

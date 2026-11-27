@@ -17,7 +17,7 @@ The platform provides a centralized dashboard for security auditing and configur
 - **Platform:** Windows 11
 - **Programming Language:** Python
 - **Framework:** Streamlit
-- **Version:** 1.0.0
+- **Version:** 1.1.0
 - **Project Type:** Educational Cybersecurity Project
 
 ## Table of Contents
